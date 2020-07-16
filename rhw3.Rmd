@@ -1,0 +1,165 @@
+---
+title: "rhw3"
+author: "Beini"
+date: "7/15/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(DAAG)
+library(MASS)
+library(ggplot2)
+```
+
+# Homework 3
+
+You will estimate the power-law scaling model, and its uncertainty, using the data alluded to in lecture, available in the file `gmp.dat` from lecture, which contains data for 2006.
+
+```{r}
+gmp <- read.table("/Users/zhaobeini/github/rcourse2020/data/gmp.dat")
+gmp$pop <- round(gmp$gmp/gmp$pcgmp)
+```
+
+1. *Plot*
+-------------------------
+First, plot the data as in lecture, with per capita GMP on the y-axis and population on the x-axis. Add the curve function with the default values provided in lecture. Add two more curves corresponding to $a=0.1$ and $a=0.15$; use the `col` option to give each curve a different color (of your choice).
+```{r}
+gmp <- gmp %>% mutate(pop = log(gmp/pcgmp), 
+                      nlmfit = 6611*(gmp/pcgmp)^(1/8),
+                      nlmfit1 = 6611*(gmp/pcgmp)^(0.1),
+                      nlmfit2 = 6611*(gmp/pcgmp)^(0.15)) 
+gmp %>% ggplot() + 
+  geom_point(aes(x = pop, y = pcgmp))+
+  labs(x = "Population",
+       y = "Per-Capita Economic Output ($/person-year)",
+       title = "US Metropolitan Areas, 2006")+
+  geom_line(aes(x = pop, y = nlmfit), col = 'blue')+
+  geom_line(aes(x = pop, y = nlmfit1), col = 'darkgreen')+
+  geom_line(aes(x = pop, y = nlmfit2), col = 'darkred')
+```
+
+2. *Write a function mse()*
+--------------------------
+Write a function, called `mse()`, which calculates the mean squared error of the model on a given data set. `mse()` should take three arguments: a numeric vector of length two, the first component standing for $y_0$ and the second for $a$; a numerical vector containing the values of $N$; and a numerical vector containing the values of $Y$.  The function should return a single numerical value. The latter two arguments should have as the default values the columns `pop` and `pcgmp` (respectively) from the `gmp` data frame from lecture.  Your function may not use `for()` or any other loop. Check that, with the default data, you get the following values.
+```{r}
+gmp <- read.table("/Users/zhaobeini/github/rcourse2020/data/gmp.dat")
+gmp$pop <- round(gmp$gmp/gmp$pcgmp)
+
+mse <- function(x,N=gmp$pop,Y=gmp$pcgmp){
+  return (mean((Y-x[1]*N^x[2])^2))
+}
+```
+**Check:**
+```{r}
+mse(c(6611,0.15))
+mse(c(5000,0.10))
+```
+
+4.*nlm() function*
+--------------------------
+R has several built-in functions for optimization, which we will meet as we go through the course. One of the simplest is `nlm()`, or non-linear minimization. `nlm()` takes two required arguments: a function, and a starting value for that function. Run `nlm()` three times with your function `mse()` and three starting value pairs for $y0$ and $a$ as in
+```
+nlm(mse, c(y0=6611,a=1/8))
+```
+What do the quantities `minimum` and `estimate` represent? What values does it return for these?
+```{r,warning=FALSE}
+nlm(mse,c(y0=6611,a=1/8))
+nlm(mse,c(y0=6611,a=0.10))
+nlm(mse,c(y0=5611,a=1/8))
+```
+
+**Conclusions:**
+
+`minimum` tells the minimum estimate of `mse(...)` used in the `nlm` function and  `estimate` represents the value of parameter($y0, a$) when `mse(...)` reach the minimum value.
+
+When $y0=6611, a=1/8$, minimum of MSE is 61857060, estimate of $y0=6611, a=0.1263177$
+
+When $y0=6611, a=0.1$, minimum of MSE is 61857060, estimate of $y0=6611, a=0.1263177$
+
+When $y0=5611, a=1/8$, minimum of MSE is 62061355, estimate of $y0=5611, a=0.0.13883$
+
+5.*Write a function plm()*
+--------------------------
+Using `nlm()`, and the `mse()` function you wrote, write a function, `plm()`, which estimates the parameters $y_0$ and $a$ of the model by minimizing the mean squared error. It should take the following arguments: an initial guess for $y_0$; an initial guess for $a$; a vector containing the $N$ values; a vector containing the $Y$ values. All arguments except the initial guesses should have suitable default values. It should return a list with the following components: the final guess for $y_0$; the final guess for $a$; the final value of the MSE. Your function must call those you wrote in earlier questions (it should not repeat their code), and the appropriate arguments to `plm()` should be passed on to them.  
+What parameter estimate do you get when starting from $y_0 = 6611$ and $a = 0.15$? From $y_0 = 5000$ and $a = 0.10$? If these are not the same, why do they differ? Which estimate has the lower MSE?
+
+```{r, warning=FALSE}
+plm <- function(y0,a,N_0=gmp$pop,Y_0=gmp$pcgmp){
+  result<-list()
+  ans<-nlm(mse,c(y0,a),N=N_0,Y=Y_0)
+  result["y0"] <- ans$estimate[1]
+  result["a"] <- ans$estimate[2]
+  result["MSE"] <- ans$minimum
+  return (result)
+}
+plm(6611,1/8)
+plm(7611,1/8)
+plm(6611,0.15)
+plm(5000,0.10)
+```
+**Conclusions:** The results differ because they have different starting value. From the results above, $y_0=6611, a=0.15$ has the lowest MSE.
+
+6. *Convince yourself the jackknife can work*
+--------------------------
+a. Calculate the mean per-capita GMP across cities, and the standard error of this mean, using the built-in functions `mean()` and `sd()`, and the formula for the standard error of the mean you learned in your intro. stats. class (or looked up on Wikipedia...).
+    ```{r}
+mean(gmp$pcgmp)
+sd(gmp$pcgmp)/sqrt(nrow(gmp))
+```
+
+b. Write a function which takes in an integer `i`, and calculate the mean per-capita GMP for every city _except_ city number `i`.
+    ```{r}
+mean_new <- function(i){
+  len=length(gmp$pcgmp)
+  s=sum(gmp$pcgmp)
+  return((s-gmp$pcgmp[i])/(len-1))
+}
+```
+c. Using this function, create a vector, `jackknifed.means`, which has the mean per-capita GMP where every city is held out in turn. (You may use a `for` loop or `sapply()`.)
+    ```{r}
+jackknifed.means <- sapply(seq(1,length(gmp$pcgmp),by=1),mean_new)
+```
+d. Using the vector `jackknifed.means`, calculate the jack-knife approximation to the standard error of the mean. How well does it match your answer from part (a)?
+    ```{r}
+n <- length(jackknifed.means)
+jack_knife <- sqrt((var(jackknifed.means))*(n-1)*(n-1)/n)
+jack_knife
+```
+**Conclusions:** Result from part (d) is almost the same with the answer from (a).
+
+7. *Write a function plm.jackknife()*
+--------------------------
+Write a function, `plm.jackknife()`, to calculate jackknife standard errors for the parameters $y_0$ and $a$. It should take the same arguments as `plm()`, and return standard errors for both parameters.  This function should call your `plm()` function repeatedly. What standard errors do you get for the two parameters?
+```{r}
+n=nrow(gmp)
+plm.jackknife <- function(y0,a,N=gmp$pop,Y=gmp$pcgmp){
+  A <- rep(NA,n)
+  Y0 <- rep(NA,n)
+  for (i in 1:n){
+    pl <- plm(y0=y0,a=a,N=N[-i],Y=Y[-i])
+    A[i] <- pl$a
+    Y0[i] <- pl$y0
+  }
+  resultlist <- list()
+  resultlist$a <- sqrt((n-1)^2/n*var(A))
+  resultlist$y0 <- sqrt((n-1)^2/n*var(Y0))
+  return (resultlist)
+}
+plm.jackknife(7611,0.125)
+```
+
+8. *Measurements for 2013*
+--------------------------
+The file `gmp-2013.dat` contains measurements for 2013. Load it, and use `plm()` and `plm.jackknife` to estimate the parameters of the model for 2013, and their standard errors. Have the parameters of the model changed significantly?
+```{r,warning=FALSE}
+gmp2013 <- read.table("/Users/zhaobeini/github/rcourse2020/data/gmp-2013.dat")
+gmp2013$pop <- round(gmp2013$gmp/gmp2013$pcgmp)
+plm(6611,0.125,gmp2013$pop,gmp2013$pcgmp)
+n <- nrow(gmp2013)
+plm.jackknife(6611,0.125,gmp2013$pop,gmp2013$pcgmp)
+```
+**Conclusions:** The parameters of the model did not change significantly.
